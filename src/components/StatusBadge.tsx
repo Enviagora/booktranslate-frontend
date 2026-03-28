@@ -1,21 +1,13 @@
 import type { Translation } from '@/types';
 
 const statusConfig = {
-  uploading: {
-    label: 'Enviando',
+  pending: {
+    label: 'Pendente',
+    className: 'bg-gray-100 text-gray-800',
+  },
+  processing: {
+    label: 'Processando',
     className: 'bg-blue-100 text-blue-800',
-  },
-  extracting: {
-    label: 'Extraindo texto',
-    className: 'bg-blue-100 text-blue-800',
-  },
-  translating: {
-    label: 'Traduzindo',
-    className: 'bg-yellow-100 text-yellow-800',
-  },
-  generating: {
-    label: 'Gerando arquivos',
-    className: 'bg-yellow-100 text-yellow-800',
   },
   completed: {
     label: 'Concluído',
@@ -32,7 +24,7 @@ interface StatusBadgeProps {
 }
 
 export function StatusBadge({ status }: StatusBadgeProps) {
-  const config = statusConfig[status] || statusConfig.uploading;
+  const config = statusConfig[status] || statusConfig.pending;
 
   return (
     <span className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-medium ${config.className}`}>

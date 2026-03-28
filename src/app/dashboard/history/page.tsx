@@ -1,17 +1,17 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { apiGet, apiPost } from '@/lib/api';
 import type { Translation } from '@/types';
 import { StatusBadge } from '@/components/StatusBadge';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
+import { createClient } from '@/lib/supabase/client';
 
 export default function HistoryPage() {
   const [translations, setTranslations] = useState<Translation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<'date' | 'status'>('date');
-  const [downloading, setDownloading] = useState<string | null>(null);
+  const supabase = createClient();
 
   useEffect(() => {
     fetchTranslations();
@@ -20,8 +20,14 @@ export default function HistoryPage() {
   const fetchTranslations = async () => {
     try {
       setLoading(true);
-      const data = await apiGet('/translations');
-      setTranslations(data.translations || []);
+      const { data, error: fetchError } = await supabase
+        .from('translations')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (fetchError) throw fetchError;
+
+      setTranslations(data || []);
       setError(null);
     } catch (err) {
       const message =
@@ -42,51 +48,10 @@ export default function HistoryPage() {
     }
   });
 
-  const handleDownload = async (
-    translationId: string,
-    type: 'pdf' | 'epub'
-  ) => {
-    try {
-      setDownloading(`${translationId}-${type}`);
-
-      const endpoint =
-        type === 'pdf'
-          ? `/translations/${translationId}/download-pdf`
-          : `/translations/${translationId}/download-epub`;
-
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}${endpoint}`,
-        {
-          method: 'GET',
-          headers: {
-            Authorization: `Bearer ${await getAuthToken()}`,
-          },
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(`Erro ao baixar arquivo ${type.toUpperCase()}`);
-      }
-
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      const translation = translations.find((t) => t.id === translationId);
-      const filename = translation
-        ? `${translation.original_filename.replace('.pdf', '')}.${type}`
-        : `traduzido.${type}`;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : 'Erro ao baixar arquivo';
-      setError(message);
-    } finally {
-      setDownloading(null);
+  const handleDownload = async (translationId: string) => {
+    const translation = translations.find((t) => t.id === translationId);
+    if (translation?.translated_file_url) {
+      window.open(translation.translated_file_url, '_blank');
     }
   };
 
@@ -159,13 +124,7 @@ export default function HistoryPage() {
                     Data
                   </th>
                   <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">
-                    Páginas
-                  </th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">
-                    Tokens
-                  </th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">
-                    Custo (USD)
+                    Progresso
                   </th>
                   <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">
                     Ações
@@ -187,47 +146,19 @@ export default function HistoryPage() {
                       )}
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-600">
-                      {translation.pages_count}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">
-                      {translation.total_tokens.toLocaleString()}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">
-                      ${translation.cost_usd.toFixed(2)}
+                      {translation.progress}%
                     </td>
                     <td className="px-6 py-4 text-sm">
-                      {translation.status === 'completed' ? (
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() =>
-                              handleDownload(translation.id, 'pdf')
-                            }
-                            disabled={
-                              downloading === `${translation.id}-pdf`
-                            }
-                            className="px-3 py-1 text-xs font-medium bg-gray-900 text-white rounded hover:bg-gray-800 disabled:opacity-50 transition-colors"
-                          >
-                            {downloading === `${translation.id}-pdf`
-                              ? 'Baixando...'
-                              : 'PDF'}
-                          </button>
-                          <button
-                            onClick={() =>
-                              handleDownload(translation.id, 'epub')
-                            }
-                            disabled={
-                              downloading === `${translation.id}-epub`
-                            }
-                            className="px-3 py-1 text-xs font-medium bg-gray-900 text-white rounded hover:bg-gray-800 disabled:opacity-50 transition-colors"
-                          >
-                            {downloading === `${translation.id}-epub`
-                              ? 'Baixando...'
-                              : 'EPUB'}
-                          </button>
-                        </div>
+                      {translation.status === 'completed' && translation.translated_file_url ? (
+                        <button
+                          onClick={() => handleDownload(translation.id)}
+                          className="px-3 py-1 text-xs font-medium bg-gray-900 text-white rounded hover:bg-gray-800 transition-colors"
+                        >
+                          Download
+                        </button>
                       ) : (
                         <span className="text-gray-500 text-xs">
-                          Processando...
+                          {translation.status === 'error' ? 'Erro' : 'Processando...'}
                         </span>
                       )}
                     </td>

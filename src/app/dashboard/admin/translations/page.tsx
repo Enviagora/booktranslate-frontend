@@ -1,12 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { apiGet } from '@/lib/api';
 import type { Translation } from '@/types';
 import { StatusBadge } from '@/components/StatusBadge';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
+import { createClient } from '@/lib/supabase/client';
 
 export default function AdminTranslationsPage() {
   const [translations, setTranslations] = useState<Translation[]>([]);
@@ -17,27 +17,36 @@ export default function AdminTranslationsPage() {
 
   const { user } = useAuth();
   const router = useRouter();
+  const supabase = createClient();
 
   useEffect(() => {
     if (user && user.role !== 'admin') {
       router.push('/dashboard');
+    } else if (user && user.role === 'admin') {
+      fetchData();
     }
   }, [user, router]);
-
-  useEffect(() => {
-    fetchData();
-  }, []);
 
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [translationsData, usersData] = await Promise.all([
-        apiGet('/admin/translations'),
-        apiGet('/admin/users'),
-      ]);
 
-      setTranslations(translationsData.translations || []);
-      setUsers(usersData.users || []);
+      const { data: translationsData, error: translationsError } = await supabase
+        .from('translations')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (translationsError) throw translationsError;
+
+      const { data: usersData, error: usersError } = await supabase
+        .from('users')
+        .select('id, email')
+        .order('email');
+
+      if (usersError) throw usersError;
+
+      setTranslations(translationsData || []);
+      setUsers(usersData || []);
       setError(null);
     } catch (err) {
       const message =
@@ -125,13 +134,7 @@ export default function AdminTranslationsPage() {
                     Data
                   </th>
                   <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">
-                    Páginas
-                  </th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">
-                    Tokens
-                  </th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">
-                    Custo (USD)
+                    Progresso
                   </th>
                   <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">
                     Concluído em
@@ -145,7 +148,7 @@ export default function AdminTranslationsPage() {
                       {translation.original_filename}
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-600">
-                      {translation.user_email || 'Desconhecido'}
+                      {users.find(u => u.id === translation.user_id)?.email || 'Desconhecido'}
                     </td>
                     <td className="px-6 py-4 text-sm">
                       <StatusBadge status={translation.status} />
@@ -156,20 +159,7 @@ export default function AdminTranslationsPage() {
                       )}
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-600">
-                      {translation.pages_count}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">
-                      {translation.total_tokens.toLocaleString()}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">
-                      ${translation.cost_usd.toFixed(2)}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">
-                      {translation.completed_at
-                        ? new Date(translation.completed_at).toLocaleDateString(
-                          'pt-BR'
-                        )
-                        : '-'}
+                      {translation.progress}%
                     </td>
                   </tr>
                 ))}

@@ -2,45 +2,56 @@
 
 import { useState, useEffect } from 'react';
 import { UploadZone } from '@/components/UploadZone';
-import { TranslationProgress } from '@/components/TranslationProgress';
 import { StatsCard } from '@/components/StatsCard';
 import { StatusBadge } from '@/components/StatusBadge';
-import { apiGet, apiPost } from '@/lib/api';
 import type { Translation } from '@/types';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
+import { createClient } from '@/lib/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function DashboardPage() {
+  const { user } = useAuth();
   const [translations, setTranslations] = useState<Translation[]>([]);
   const [stats, setStats] = useState({
     total_translations: 0,
     total_tokens: 0,
   });
   const [uploading, setUploading] = useState(false);
-  const [currentTranslationId, setCurrentTranslationId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const supabase = createClient();
+
   useEffect(() => {
-    fetchData();
-  }, []);
+    if (user) {
+      fetchData();
+    }
+  }, [user]);
 
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [translationsData, statsData] = await Promise.all([
-        apiGet('/translations?limit=5'),
-        apiGet('/user/stats'),
-      ]);
 
-      setTranslations(translationsData.translations || []);
+      const { data: translationsData, error: translationsError } = await supabase
+        .from('translations')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+      if (translationsError) throw translationsError;
+
+      const { count } = await supabase
+        .from('translations')
+        .select('*', { count: 'exact', head: true });
+
+      setTranslations(translationsData || []);
       setStats({
-        total_translations: statsData.translations_count || 0,
-        total_tokens: statsData.total_tokens || 0,
+        total_translations: count || 0,
+        total_tokens: 0,
       });
       setError(null);
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message : 'Erro ao carregar dados';
+      const message = err instanceof Error ? err.message : 'Erro ao carregar dados';
       setError(message);
     } finally {
       setLoading(false);
@@ -52,38 +63,43 @@ export default function DashboardPage() {
       setUploading(true);
       setError(null);
 
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/translations`,
-        {
-          method: 'POST',
-          body: formData,
-          headers: {
-            Authorization: `Bearer ${await getAuthToken()}`,
-          },
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error('Erro ao enviar arquivo');
+      if (!user) {
+        throw new Error('Usuário não autenticado');
       }
 
-      const data = await response.json();
-      setCurrentTranslationId(data.id);
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${user.id}/${Date.now()}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('translations')
+        .upload(fileName, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('translations')
+        .getPublicUrl(fileName);
+
+      const { error: insertError } = await supabase
+        .from('translations')
+        .insert({
+          user_id: user.id,
+          original_filename: file.name,
+          file_url: publicUrl,
+          status: 'pending',
+          source_language: 'en',
+          target_language: 'pt',
+        });
+
+      if (insertError) throw insertError;
+
+      await fetchData();
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message : 'Erro ao enviar arquivo';
+      const message = err instanceof Error ? err.message : 'Erro ao enviar arquivo';
       setError(message);
     } finally {
       setUploading(false);
     }
-  };
-
-  const handleTranslationComplete = async () => {
-    setCurrentTranslationId(null);
-    await fetchData();
   };
 
   return (
@@ -93,30 +109,18 @@ export default function DashboardPage() {
         <p className="text-gray-600">Bem-vindo ao BookTranslate</p>
       </div>
 
-      {error && !currentTranslationId && (
+      {error && (
         <div className="rounded-lg bg-red-50 border border-red-200 p-4">
           <p className="text-sm text-red-800">{error}</p>
         </div>
       )}
 
-      {currentTranslationId ? (
-        <div className="bg-white border border-gray-200 rounded-lg p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">
-            Tradução em Progresso
-          </h2>
-          <TranslationProgress
-            translationId={currentTranslationId}
-            onComplete={handleTranslationComplete}
-          />
-        </div>
-      ) : (
-        <div className="bg-white border border-gray-200 rounded-lg p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">
-            Enviar Novo Arquivo
-          </h2>
-          <UploadZone onUpload={handleUpload} isLoading={uploading} />
-        </div>
-      )}
+      <div className="bg-white border border-gray-200 rounded-lg p-6">
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">
+          Enviar Novo Arquivo
+        </h2>
+        <UploadZone onUpload={handleUpload} isLoading={uploading} />
+      </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <StatsCard
@@ -136,7 +140,7 @@ export default function DashboardPage() {
           Traduções Recentes
         </h2>
 
-        {loading && !translations.length ? (
+        {loading ? (
           <div className="flex justify-center py-12">
             <LoadingSpinner />
           </div>
@@ -160,10 +164,7 @@ export default function DashboardPage() {
                       Data
                     </th>
                     <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">
-                      Páginas
-                    </th>
-                    <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">
-                      Tokens
+                      Idiomas
                     </th>
                   </tr>
                 </thead>
@@ -177,15 +178,10 @@ export default function DashboardPage() {
                         <StatusBadge status={translation.status} />
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-600">
-                        {new Date(translation.created_at).toLocaleDateString(
-                          'pt-BR'
-                        )}
+                        {new Date(translation.created_at).toLocaleDateString('pt-BR')}
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-600">
-                        {translation.pages_count}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-600">
-                        {translation.total_tokens.toLocaleString()}
+                        {translation.source_language} → {translation.target_language}
                       </td>
                     </tr>
                   ))}
@@ -197,16 +193,4 @@ export default function DashboardPage() {
       </div>
     </div>
   );
-}
-
-async function getAuthToken(): Promise<string> {
-  const { createClient } = await import('@/lib/supabase/client');
-  const supabase = createClient();
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  if (!session) {
-    throw new Error('Não autenticado');
-  }
-  return session.access_token;
 }

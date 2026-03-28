@@ -26,7 +26,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const supabase = createClient();
 
   useEffect(() => {
-    // Check current session
     const checkSession = async () => {
       try {
         setLoading(true);
@@ -35,22 +34,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } = await supabase.auth.getSession();
 
         if (session?.user) {
-          // Get user metadata from auth
-          const userMetadata = session.user.user_metadata || {};
-          const userProfile: UserProfile = {
-            id: session.user.id,
-            email: session.user.email || '',
-            role: (userMetadata.role as 'user' | 'admin') || 'user',
-            is_blocked: userMetadata.is_blocked || false,
-            created_at: session.user.created_at || new Date().toISOString(),
-          };
+          const { data: userData, error: userError } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', session.user.id)
+            .maybeSingle();
 
-          if (userProfile.is_blocked) {
+          if (userError) {
+            console.error('Erro ao buscar dados do usuário:', userError);
             setUser(null);
-            setError('Sua conta foi bloqueada.');
-          } else {
+          } else if (userData) {
+            const userProfile: UserProfile = {
+              id: userData.id,
+              email: userData.email,
+              role: userData.role as 'user' | 'admin',
+              is_blocked: false,
+              created_at: userData.created_at,
+            };
             setUser(userProfile);
             setError(null);
+          } else {
+            setUser(null);
           }
         } else {
           setUser(null);
@@ -65,25 +69,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     checkSession();
 
-    // Subscribe to auth changes
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN' && session?.user) {
-        const userMetadata = session.user.user_metadata || {};
-        const userProfile: UserProfile = {
-          id: session.user.id,
-          email: session.user.email || '',
-          role: (userMetadata.role as 'user' | 'admin') || 'user',
-          is_blocked: userMetadata.is_blocked || false,
-          created_at: session.user.created_at || new Date().toISOString(),
-        };
+        const { data: userData } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', session.user.id)
+          .maybeSingle();
 
-        if (userProfile.is_blocked) {
-          setUser(null);
-          setError('Sua conta foi bloqueada.');
-          await supabase.auth.signOut();
-        } else {
+        if (userData) {
+          const userProfile: UserProfile = {
+            id: userData.id,
+            email: userData.email,
+            role: userData.role as 'user' | 'admin',
+            is_blocked: false,
+            created_at: userData.created_at,
+          };
           setUser(userProfile);
           setError(null);
         }
@@ -111,21 +114,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (data.user) {
-        const userMetadata = data.user.user_metadata || {};
-        const userProfile: UserProfile = {
-          id: data.user.id,
-          email: data.user.email || '',
-          role: (userMetadata.role as 'user' | 'admin') || 'user',
-          is_blocked: userMetadata.is_blocked || false,
-          created_at: data.user.created_at || new Date().toISOString(),
-        };
+        const { data: userData } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', data.user.id)
+          .maybeSingle();
 
-        if (userProfile.is_blocked) {
-          await supabase.auth.signOut();
-          throw new Error('Sua conta foi bloqueada.');
+        if (userData) {
+          const userProfile: UserProfile = {
+            id: userData.id,
+            email: userData.email,
+            role: userData.role as 'user' | 'admin',
+            is_blocked: false,
+            created_at: userData.created_at,
+          };
+          setUser(userProfile);
         }
-
-        setUser(userProfile);
       }
     } catch (err) {
       const message =

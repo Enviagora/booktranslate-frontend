@@ -12,10 +12,8 @@ interface TranslationProgressProps {
 }
 
 const statusMessages = {
-  uploading: 'Enviando arquivo...',
-  extracting: 'Extraindo texto...',
-  translating: 'Traduzindo conteúdo...',
-  generating: 'Gerando arquivos...',
+  pending: 'Aguardando processamento...',
+  processing: 'Processando...',
   completed: 'Concluído!',
   error: 'Erro na tradução',
 };

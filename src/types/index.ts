@@ -10,20 +10,15 @@ export interface Translation {
   id: string;
   user_id: string;
   original_filename: string;
-  status: 'uploading' | 'extracting' | 'translating' | 'generating' | 'completed' | 'error';
+  source_language: string;
+  target_language: string;
+  status: 'pending' | 'processing' | 'completed' | 'error';
+  file_url: string;
+  translated_file_url: string | null;
   progress: number;
-  status_message: string;
-  original_file_path: string;
-  translated_pdf_path: string | null;
-  translated_epub_path: string | null;
-  input_tokens: number;
-  output_tokens: number;
-  total_tokens: number;
-  cost_usd: number;
-  pages_count: number;
+  error_message: string | null;
   created_at: string;
-  completed_at: string | null;
-  user_email?: string;
+  updated_at: string;
 }
 
 export interface AdminStats {
