@@ -15,7 +15,9 @@ async function getAuthToken(): Promise<string> {
   return session.access_token;
 }
 
-interface ApiOptions extends RequestInit {
+interface ApiOptions {
+  method?: string;
+  headers?: Record<string, string>;
   body?: unknown;
 }
 
@@ -29,11 +31,11 @@ export async function apiCall(
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     Authorization: `Bearer ${token}`,
-    ...((options.headers as Record<string, string>) || {}),
+    ...(options.headers || {}),
   };
 
   const config: RequestInit = {
-    ...options,
+    method: options.method,
     headers,
   };
 

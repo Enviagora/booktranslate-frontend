@@ -42,8 +42,8 @@ export function TranslationProgress({
           if (interval) clearInterval(interval);
         } else if (data.status === 'error') {
           setLoading(false);
-          setError(data.status_message || 'Erro desconhecido');
-          onError?.(data.status_message || 'Erro desconhecido');
+          setError(data.error_message || 'Erro desconhecido');
+          onError?.(data.error_message || 'Erro desconhecido');
           if (interval) clearInterval(interval);
         }
       } catch (err) {
@@ -107,8 +107,8 @@ export function TranslationProgress({
         </div>
       </div>
 
-      {translation.status_message && translation.status === 'error' && (
-        <p className="text-sm text-red-600">{translation.status_message}</p>
+      {translation.error_message && translation.status === 'error' && (
+        <p className="text-sm text-red-600">{translation.error_message}</p>
       )}
 
       {translation.status === 'completed' && (
